@@ -1,0 +1,43 @@
+data_dir: "C:\\Program Files\\Vector\\data"
+
+sources:
+  windows_security:
+    type: windows_event_log
+    event_logs:
+      - name: Security
+        ignore_older: 86400   # ignore events older than 1 day (optional)
+
+transforms:
+  filter_logon_events:
+    type: filter
+    inputs:
+      - windows_security
+    condition: >
+      .event_id == 4624 || .event_id == 4625
+
+  normalize_fields:
+    type: remap
+    inputs:
+      - filter_logon_events
+    source: |
+      .EventID = .event_id
+      .TimeCreated = .timestamp
+
+      # Extract useful fields safely
+      .AccountName = .event_data.TargetUserName ?? "-"
+      .LogonType = .event_data.LogonType ?? "-"
+      .WorkstationName = .event_data.WorkstationName ?? "-"
+      .SourceIP = .event_data.IpAddress ?? "-"
+
+      if .event_id == 4625 {
+        .FailureReason = .event_data.SubStatus ?? "Authentication failure"
+      }
+
+sinks:
+  file_logon_events:
+    type: file
+    inputs:
+      - normalize_fields
+    path: "C:\\Program Files\\Vector\\logs\\windows_logon_events.log"
+    encoding:
+      codec: json
