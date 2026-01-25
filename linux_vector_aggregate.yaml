@@ -1,0 +1,68 @@
+# =============================================================================
+# Vector Configuration - AlmaLinux 10
+# Collect /var/log/messages and /var/log/secure
+# Output: single JSON file (aggregated)
+# =============================================================================
+
+data_dir: "/var/lib/vector"
+
+# -----------------------------------------------------------------------------
+# SOURCES
+# -----------------------------------------------------------------------------
+sources:
+  messages_log:
+    type: file
+    include:
+      - /var/log/messages
+    read_from: beginning
+
+  secure_log:
+    type: file
+    include:
+      - /var/log/secure
+    read_from: beginning
+
+# -----------------------------------------------------------------------------
+# TRANSFORMS
+# Normalize and tag logs
+# -----------------------------------------------------------------------------
+transforms:
+  normalize_logs:
+    type: remap
+    inputs:
+      - messages_log
+      - secure_log
+    source: |
+      # Preserve raw message
+      .raw_message = .message
+
+      # Parse syslog format
+      . = parse_syslog!(string!(.message))
+
+      # Ensure .file is a string (no need for fallback value)
+      .file = to_string!(.file)
+
+      # Identify log source based on file path
+      if contains!(.file, "secure") {
+        .log_source = "secure"
+      } else if contains!(.file, "messages") {
+        .log_source = "messages"
+      } else {
+        .log_source = "unknown"
+      }
+
+      # Add host metadata
+      .host = get_hostname!()
+
+# -----------------------------------------------------------------------------
+# SINK
+# Single aggregated JSON output
+# -----------------------------------------------------------------------------
+sinks:
+  file_output:
+    type: file
+    inputs:
+      - normalize_logs
+    path: "/var/log/aggregated_system_logs.json"
+    encoding:
+      codec: json
