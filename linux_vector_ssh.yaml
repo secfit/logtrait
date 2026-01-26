@@ -1,0 +1,53 @@
+[root@diannekehoe vector]# cat vector.yaml
+# =============================================================================
+# Vector Configuration - AlmaLinux 10
+# Collect /var/log/secure only
+# Output: JSON with extracted IP
+# =============================================================================
+
+data_dir: "/var/lib/vector"
+
+sources:
+  secure_log:
+    type: file
+    include:
+      - /var/log/secure
+    read_from: beginning
+
+transforms:
+  normalize_secure_logs:
+    type: remap
+    inputs:
+      - secure_log
+    source: |
+      # Preserve raw message
+      .raw_message = .message
+
+      # Parse syslog
+      . = parse_syslog!(string!(.message))
+
+      # Convert file path
+      .file = to_string(.file)
+
+      # Log source
+      .log_source = "secure"
+
+      # Host metadata
+      .host = get_hostname!()
+
+      # Extract IPv4 from SSH messages
+      # -------------------------
+      .ip_match = parse_regex(.message, r'from (?<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})') ?? {}
+      if exists(.ip_match.ip) {
+        .ssh_ip = .ip_match.ip
+      }
+      del(.ip_match)  # Remove intermediate field
+
+sinks:
+  file_output:
+    type: file
+    inputs:
+      - normalize_secure_logs
+    path: "/var/log/aggregated_secure_logs.json"
+    encoding:
+      codec: json
