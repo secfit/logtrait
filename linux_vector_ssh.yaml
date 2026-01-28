@@ -1,4 +1,3 @@
-[root@diannekehoe vector]# cat vector.yaml
 # =============================================================================
 # Vector Configuration - AlmaLinux 10
 # Collect /var/log/secure only
